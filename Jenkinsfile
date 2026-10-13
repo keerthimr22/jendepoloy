@@ -11,7 +11,8 @@ pipeline {
                         returnStdout: true,
                         script: '''@where docker 2>nul
 @if exist "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe" @echo C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe
-@if exist "C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe" @echo C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe'''
+@if exist "C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe" @echo C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe
+@exit /b 0'''
                     ).trim().readLines().find { it?.trim() }
 
                     if (!dockerExe) {
