@@ -10,12 +10,9 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-                    python --version
-                    if errorlevel 1 (
-                        echo Python 3 is required on the Jenkins agent and must be available on PATH.
-                        exit /b 1
-                    )
-                    if not exist "%PYTHON%" python -m venv .venv
+                    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ci\\bootstrap-python.ps1
+                    if errorlevel 1 exit /b 1
+                    if not exist "%PYTHON%" "%WORKSPACE%\\.python\\python.exe" -m venv .venv
                     if errorlevel 1 exit /b 1
                     "%PYTHON%" -m pip install --upgrade pip
                     if errorlevel 1 exit /b 1
