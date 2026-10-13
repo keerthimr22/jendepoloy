@@ -4,14 +4,31 @@ pipeline {
     stages {
         stage('Docker sanity check') {
             steps {
-                bat '''
-                    @echo off
-                    docker version
-                    if errorlevel 1 (
-                        echo Docker is unavailable to the Jenkins service. Start Docker Desktop and make sure this service account can use its Docker Engine.
-                        exit /b 1
-                    )
-                '''
+                script {
+                    // Docker Desktop is installed per-user on this Windows machine,
+                    // so its CLI may not be on the Jenkins service PATH.
+                    def dockerExe = bat(
+                        returnStdout: true,
+                        script: '''@echo off
+@where docker 2>nul
+@for /d %%U in ("C:\\Users\\*") do @if exist "%%~fU\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe" @echo %%~fU\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe
+@if exist "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe" @echo C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe
+@exit /b 0'''
+                    ).trim().readLines().find { it?.trim()?.toLowerCase()?.endsWith('docker.exe') }
+
+                    if (!dockerExe) {
+                        error '''Docker Desktop CLI was not found. Install Docker Desktop on this agent and start it once.'''
+                    }
+
+                    def dockerDir = dockerExe.substring(0, dockerExe.lastIndexOf('\\'))
+                    env.PATH = "${dockerDir};${env.PATH}"
+                    bat 'docker --version'
+
+                    def daemonStatus = bat(returnStatus: true, script: '@docker info >nul 2>&1')
+                    if (daemonStatus != 0) {
+                        error '''Docker CLI was found, but Jenkins cannot access Docker Engine. This Jenkins service runs as LocalSystem. In Windows Services, change Jenkins Log On to the same Windows account that runs Docker Desktop, restart Docker Desktop and Jenkins, then run this job again.'''
+                    }
+                }
             }
         }
 
