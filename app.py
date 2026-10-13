@@ -3,9 +3,9 @@ from flask import Flask
 app = Flask(__name__)
 
 
-@app.get('/')
+@app.route('/')
 def home():
-    return {'status': 'ok'}
+    return 'Hello from Jenkins Docker Pipeline'
 
 
 if __name__ == '__main__':

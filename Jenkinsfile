@@ -1,42 +1,49 @@
 pipeline {
     agent any
 
-    environment {
-        PYTHON = '.python\\python.exe'
-    }
-
     stages {
-        stage('Prepare Python') {
+        stage('Docker sanity check') {
             steps {
                 bat '''
                     @echo off
-                    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ci\\bootstrap-python.ps1
-                    if errorlevel 1 exit /b 1
-                    "%PYTHON%" -m pip --version
-                    if errorlevel 1 exit /b 1
-                    "%PYTHON%" -m pip install --disable-pip-version-check --target .python\\packages -r requirements.txt
-                    if errorlevel 1 exit /b 1
+                    docker version
+                    if errorlevel 1 (
+                        echo Docker is unavailable to the Jenkins service. Start Docker Desktop and make sure this service account can use its Docker Engine.
+                        exit /b 1
+                    )
                 '''
             }
         }
 
-        stage('Build') {
+        stage('Build Docker Image') {
             steps {
-                bat '"%PYTHON%" -m compileall -q app.py'
+                bat 'docker build -t flaskapp .'
             }
         }
 
-        stage('Dev smoke check') {
+        stage('Run Dev Container') {
             steps {
                 bat '''
-                    "%PYTHON%" -c "from app import app; response = app.test_client().get('/'); print(response.get_json()); assert response.status_code == 200 and response.get_json() == {'status': 'ok'}"
+                    @echo off
+                    docker rm -f dev-container 2>nul
+                    docker run -d --name dev-container -p 5000:5000 flaskapp
                 '''
             }
         }
 
-        stage('Test') {
+        stage('Run Test Container') {
             steps {
-                bat '"%PYTHON%" -m unittest discover -v'
+                bat '''
+                    @echo off
+                    docker rm -f test-container 2>nul
+                    docker run -d --name test-container -p 5001:5000 flaskapp
+                '''
+            }
+        }
+
+        stage('Verify Containers') {
+            steps {
+                bat 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ci\\verify-containers.ps1'
             }
         }
     }
