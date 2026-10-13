@@ -1,8 +1,12 @@
 $ErrorActionPreference = 'Stop'
 $expected = 'Hello from Jenkins Docker Pipeline'
+$checks = @(
+    @{ Name = 'Development'; Port = $env:DEV_PORT }
+    @{ Name = 'Test'; Port = $env:TEST_PORT }
+)
 
-foreach ($port in @(5000, 5001)) {
-    $uri = "http://localhost:$port/"
+foreach ($check in $checks) {
+    $uri = "http://localhost:$($check.Port)/"
     $deadline = (Get-Date).AddSeconds(60)
     $verified = $false
 
@@ -23,7 +27,7 @@ foreach ($port in @(5000, 5001)) {
             throw "Unexpected response from ${uri}: $($response.StatusCode) $($response.Content)"
         }
 
-        Write-Host "Verified $uri"
+        Write-Host "Verified $($check.Name) container at $uri"
         $verified = $true
         break
     }
