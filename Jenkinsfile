@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        PYTHON = '.venv\\Scripts\\python.exe'
+        PYTHON = '.python\\python.exe'
     }
 
     stages {
@@ -12,11 +12,10 @@ pipeline {
                     @echo off
                     powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ci\\bootstrap-python.ps1
                     if errorlevel 1 exit /b 1
-                    if not exist "%PYTHON%" "%WORKSPACE%\\.python\\python.exe" -m venv .venv
+                    "%PYTHON%" -m pip --version
                     if errorlevel 1 exit /b 1
-                    "%PYTHON%" -m pip install --upgrade pip
+                    "%PYTHON%" -m pip install --disable-pip-version-check --target .python\\packages -r requirements.txt
                     if errorlevel 1 exit /b 1
-                    "%PYTHON%" -m pip install -r requirements.txt
                 '''
             }
         }

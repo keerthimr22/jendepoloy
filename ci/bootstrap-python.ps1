@@ -3,42 +3,61 @@ $ProgressPreference = 'SilentlyContinue'
 
 $pythonRoot = Join-Path $env:WORKSPACE '.python'
 $pythonExe = Join-Path $pythonRoot 'python.exe'
-$installer = Join-Path $env:WORKSPACE 'python-3.14.8-amd64.exe'
+$archive = Join-Path $env:WORKSPACE 'python-3.14.8-embed-amd64.zip'
+$pythonPathFile = Join-Path $pythonRoot 'python314._pth'
+$stdlibZip = Join-Path $pythonRoot 'python314.zip'
 
-if (-not (Test-Path -LiteralPath $pythonExe)) {
-    $downloadUrl = 'https://www.python.org/ftp/python/3.14.8/python-3.14.8-amd64.exe'
-    $expectedSha256 = '759be887b96e736a3ca886daf8d575f18fcae1a09efab6902f42d59e8999f8ef'
+if (-not ((Test-Path -LiteralPath $pythonExe) -and
+          (Test-Path -LiteralPath $pythonPathFile) -and
+          (Test-Path -LiteralPath $stdlibZip))) {
+    if (Test-Path -LiteralPath $pythonRoot) {
+        Remove-Item -LiteralPath $pythonRoot -Recurse -Force
+    }
 
-    Write-Host 'Downloading Python 3.14.8 from python.org...'
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $installer
+    $downloadUrl = 'https://www.python.org/ftp/python/3.14.8/python-3.14.8-embed-amd64.zip'
+    $expectedSha256 = 'a93abe456ab01bd96d7a085b3cdb6566b3063f4241360d114142fbdb07f0a310'
 
-    $actualSha256 = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+    Write-Host 'Downloading the Python 3.14.8 embeddable package from python.org...'
+    Invoke-WebRequest -UseBasicParsing -Uri $downloadUrl -OutFile $archive
+
+    $actualSha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualSha256 -ne $expectedSha256) {
-        Remove-Item -LiteralPath $installer -Force
-        throw "Python installer checksum mismatch. Expected $expectedSha256, got $actualSha256."
+        Remove-Item -LiteralPath $archive -Force
+        throw "Python archive checksum mismatch. Expected $expectedSha256, got $actualSha256."
     }
 
-    Write-Host 'Installing Python into the Jenkins workspace...'
-    $installArgs = @(
-        '/quiet'
-        'InstallAllUsers=0'
-        "TargetDir=$pythonRoot"
-        'Include_pip=1'
-        'Include_test=0'
-        'PrependPath=0'
-        'Shortcuts=0'
-    )
-    $process = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
-    if ($process.ExitCode -ne 0) {
-        throw "Python installer failed with exit code $($process.ExitCode)."
-    }
+    New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+    Expand-Archive -LiteralPath $archive -DestinationPath $pythonRoot -Force
+    Remove-Item -LiteralPath $archive -Force
 }
 
 if (-not (Test-Path -LiteralPath $pythonExe)) {
-    throw "Python installation did not create $pythonExe."
+    throw "Python archive did not contain $pythonExe."
+}
+
+# Enable site-packages and add the package directory to this isolated runtime.
+$pythonPaths = @(Get-Content -LiteralPath $pythonPathFile)
+if ($pythonPaths -notcontains 'packages') {
+    $pythonPaths += 'packages'
+}
+if ($pythonPaths -notcontains 'import site') {
+    $pythonPaths += 'import site'
+}
+Set-Content -LiteralPath $pythonPathFile -Value $pythonPaths -Encoding ASCII
+
+# The embeddable distribution omits pip. Bootstrap it from the Python Packaging Authority.
+& $pythonExe -m pip --version 2>$null
+if ($LASTEXITCODE -ne 0) {
+    $getPip = Join-Path $env:WORKSPACE 'get-pip.py'
+    Write-Host 'Bootstrapping pip...'
+    Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $getPip
+    & $pythonExe $getPip --disable-pip-version-check
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not bootstrap pip in the workspace Python runtime.'
+    }
 }
 
 & $pythonExe --version
 if ($LASTEXITCODE -ne 0) {
-    throw 'The workspace Python installation could not start.'
+    throw 'The workspace Python runtime could not start.'
 }
