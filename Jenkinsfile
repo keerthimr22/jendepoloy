@@ -1,5 +1,8 @@
 pipeline {
     agent any
+    options {
+        disableConcurrentBuilds()
+    }
 
     stages {
         stage('Docker sanity check') {
@@ -38,43 +41,31 @@ pipeline {
             }
         }
 
-        stage('Select available ports') {
-            steps {
-                script {
-                    def ports = bat(
-                        returnStdout: true,
-                        script: '@powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ci\\select-ports.ps1'
-                    ).trim().readLines()
-
-                    if (ports.size() != 2) {
-                        error 'Could not select two available localhost ports.'
-                    }
-
-                    env.DEV_PORT = ports[0].trim()
-                    env.TEST_PORT = ports[1].trim()
-                    echo "Development container: http://localhost:${env.DEV_PORT}"
-                    echo "Test container: http://localhost:${env.TEST_PORT}"
-                }
-            }
-        }
-
         stage('Run Dev Container') {
             steps {
-                bat '''
-                    @echo off
-                    docker rm -f dev-container 2>nul
-                    docker run -d --name dev-container -p 127.0.0.1:%DEV_PORT%:5000 flaskapp
-                '''
+                script {
+                    bat(returnStatus: true, script: '@docker rm -f dev-container 2>nul')
+                    bat 'docker run -d --name dev-container -p 127.0.0.1::5000 flaskapp'
+                    env.DEV_PORT = bat(
+                        returnStdout: true,
+                        script: '@docker port dev-container 5000/tcp'
+                    ).trim().tokenize(':').last()
+                    echo "Development container: http://localhost:${env.DEV_PORT}"
+                }
             }
         }
 
         stage('Run Test Container') {
             steps {
-                bat '''
-                    @echo off
-                    docker rm -f test-container 2>nul
-                    docker run -d --name test-container -p 127.0.0.1:%TEST_PORT%:5000 flaskapp
-                '''
+                script {
+                    bat(returnStatus: true, script: '@docker rm -f test-container 2>nul')
+                    bat 'docker run -d --name test-container -p 127.0.0.1::5000 flaskapp'
+                    env.TEST_PORT = bat(
+                        returnStdout: true,
+                        script: '@docker port test-container 5000/tcp'
+                    ).trim().tokenize(':').last()
+                    echo "Test container: http://localhost:${env.TEST_PORT}"
+                }
             }
         }
 
