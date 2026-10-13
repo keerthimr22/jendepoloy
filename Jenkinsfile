@@ -5,11 +5,26 @@ pipeline {
         stage('Docker sanity check') {
             steps {
                 script {
-                    // Verify Docker CLI is installed on the agent
-                    def rc = bat(returnStatus: true, script: '@docker --version')
-                    if (rc != 0) {
-                        error 'Docker CLI not found on this Jenkins agent. Install Docker and add it to the system PATH.'
+                    // Find Docker even when the Jenkins Windows service has a
+                    // different PATH from the interactive user account.
+                    def dockerExe = bat(
+                        returnStdout: true,
+                        script: '''@where docker 2>nul
+@if exist "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe" @echo C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe
+@if exist "C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe" @echo C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe'''
+                    ).trim().readLines().find { it?.trim() }
+
+                    if (!dockerExe) {
+                        error '''Docker is not installed or is not visible to the Jenkins service.
+Install Docker Desktop or Docker Engine on this agent, add its CLI directory to the SYSTEM PATH,
+restart the Jenkins service, and verify with: where docker && docker info'''
                     }
+
+                    // Make the discovered CLI available to docker.build and dockerImage.inside.
+                    def dockerDir = dockerExe.substring(0, dockerExe.lastIndexOf('\\'))
+                    env.PATH = "${dockerDir};${env.PATH}"
+                    bat 'docker --version'
+                    bat 'docker info'
                 }
             }
         }
